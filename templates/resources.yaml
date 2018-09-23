@@ -1,0 +1,53 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+    Provisions an RDS aurora cluster
+
+Parameters:
+    NetworkStackName:
+        Type: String
+        Default: granta-network
+
+Resources:
+
+    SecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            VpcId:
+                Fn::ImportValue: !Sub ${NetworkStackName}-vpc-id
+            GroupDescription: "Inbound mysql rules"
+            SecurityGroupIngress:
+                - FromPort: 3306
+                  ToPort: 3306
+                  IpProtocol: tcp
+                  CidrIp: "10.0.0.0/16"
+
+    SubnetGroup:
+        Type: AWS::RDS::DBSubnetGroup
+        Properties:
+            DBSubnetGroupDescription: "group of private subnets"
+            SubnetIds:
+                Fn::Split:
+                    - ","
+                    - Fn::ImportValue: !Sub "${NetworkStackName}-private-subnets"
+
+    DBCluster:
+        Type: AWS::RDS::DBCluster
+        DeletionPolicy: Delete
+        Properties:
+            Engine: aurora-mysql
+            MasterUsername: root
+            MasterUserPassword: tottenham8490
+            VpcSecurityGroupIds:
+                - !Ref SecurityGroup
+            DBSubnetGroupName: !Ref SubnetGroup
+            DBClusterParameterGroupName: default.aurora-mysql5.7
+
+    DBInstance:
+        Type: AWS::RDS::DBInstance
+        DeletionPolicy: Delete
+        Properties:
+            DBInstanceClass: db.t2.small
+            DBClusterIdentifier: !Ref DBCluster
+            DBSubnetGroupName: !Ref SubnetGroup
+            Engine: aurora-mysql

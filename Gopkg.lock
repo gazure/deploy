@@ -4,7 +4,6 @@
 [[projects]]
   name = "github.com/aws/aws-sdk-go-v2"
   packages = [
-    ".",
     "aws",
     "aws/awserr",
     "aws/defaults",
@@ -21,8 +20,13 @@
     "private/protocol/query",
     "private/protocol/query/queryutil",
     "private/protocol/rest",
+    "private/protocol/restxml",
+    "private/protocol/xml",
     "private/protocol/xml/xmlutil",
     "service/cloudformation",
+    "service/s3",
+    "service/s3/s3iface",
+    "service/s3/s3manager",
     "service/sts"
   ]
   revision = "ff1a530c31507c97cf5edbee226e604ca08661cc"
@@ -42,6 +46,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "5c9c83cc393ab709b8c4124b4156308156cf294f979fb2dfcb827dc265daee78"
+  inputs-digest = "55254f1311e074e242a9a068eb865a7a776f3f46ec16b59d0b5410449e0ddc00"
   solver-name = "gps-cdcl"
   solver-version = 1
