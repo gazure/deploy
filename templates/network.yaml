@@ -12,8 +12,18 @@ Parameters:
             - false
         Default: false
 
+    DeployPrivateSubnets:
+        Description: True will deploy a public-private subnet architecture
+        Type: String
+        AllowedValues:
+            - true
+            - false
+        Default: false
+
 Conditions:
     ShouldDeployToAllAZs: !Equals [ !Ref FullAZDeploy, "true" ]
+    ShouldDeployPrivateSubnets: !Equals [ !Ref DeployPrivateSubnets, "true" ]
+    ShouldDeployPStoAllAZs: !And [ ShouldDeployToAllAZs, ShouldDeployPrivateSubnets ]
 
 Mappings:
 
@@ -133,41 +143,46 @@ Resources:
 
     EIP1:
         Type: AWS::EC2::EIP
+        Condition: ShouldDeployPrivateSubnets
         Properties:
             Domain: "vpc"
 
     EIP2:
         Type: AWS::EC2::EIP
+        Condition: ShouldDeployPrivateSubnets
         Properties:
             Domain: "vpc"
 
     EIP3:
         Type: AWS::EC2::EIP
-        Condition: ShouldDeployToAllAZs
+        Condition: ShouldDeployPStoAllAZs
         Properties:
             Domain: "vpc"
 
     NatGateway1:
         Type: AWS::EC2::NatGateway
+        Condition: ShouldDeployPrivateSubnets
         Properties:
             AllocationId: !GetAtt [EIP1, AllocationId]
             SubnetId: !Ref PublicSubnet1
 
     NatGateway2:
         Type: AWS::EC2::NatGateway
+        Condition: ShouldDeployPrivateSubnets
         Properties:
             AllocationId: !GetAtt [EIP2, AllocationId]
             SubnetId: !Ref PublicSubnet2
 
     NatGateway3:
         Type: AWS::EC2::NatGateway
-        Condition: ShouldDeployToAllAZs
+        Condition: ShouldDeployPStoAllAZs
         Properties:
             AllocationId: !GetAtt [EIP3, AllocationId]
             SubnetId: !Ref PublicSubnet3
 
     PrivateSubnet1:
         Type: AWS::EC2::Subnet
+        Condition: ShouldDeployPrivateSubnets
         Properties:
             AvailabilityZone: !FindInMap [One, !Ref "AWS::Region", AZ]
             CidrBlock: 10.0.96.0/19
@@ -180,6 +195,7 @@ Resources:
 
     PrivateSubnet2:
         Type: AWS::EC2::Subnet
+        Condition: ShouldDeployPrivateSubnets
         Properties:
             AvailabilityZone: !FindInMap [Two, !Ref "AWS::Region", AZ]
             CidrBlock: 10.0.128.0/19
@@ -192,7 +208,7 @@ Resources:
 
     PrivateSubnet3:
         Type: AWS::EC2::Subnet
-        Condition: ShouldDeployToAllAZs
+        Condition: ShouldDeployPStoAllAZs
         Properties:
             AvailabilityZone: !FindInMap [Three, !Ref "AWS::Region", AZ]
             CidrBlock: 10.0.160.0/19
@@ -205,6 +221,7 @@ Resources:
 
     PrivateRouteTable1:
         Type: AWS::EC2::RouteTable
+        Condition: ShouldDeployPrivateSubnets
         Properties:
             VpcId: !Ref VPC
             Tags:
@@ -215,6 +232,7 @@ Resources:
 
     PrivateRouteTable2:
         Type: AWS::EC2::RouteTable
+        Condition: ShouldDeployPrivateSubnets
         Properties:
             VpcId: !Ref VPC
             Tags:
@@ -225,7 +243,7 @@ Resources:
 
     PrivateRouteTable3:
         Type: AWS::EC2::RouteTable
-        Condition: ShouldDeployToAllAZs
+        Condition: ShouldDeployPStoAllAZs
         Properties:
             VpcId: !Ref VPC
             Tags:
@@ -236,6 +254,7 @@ Resources:
 
     PrivateNGWRoute1:
         Type: AWS::EC2::Route
+        Condition: ShouldDeployPrivateSubnets
         Properties:
             RouteTableId: !Ref PrivateRouteTable1
             DestinationCidrBlock: 0.0.0.0/0
@@ -243,6 +262,7 @@ Resources:
 
     PrivateNGWRoute2:
         Type: AWS::EC2::Route
+        Condition: ShouldDeployPrivateSubnets
         Properties:
             RouteTableId: !Ref PrivateRouteTable2
             DestinationCidrBlock: 0.0.0.0/0
@@ -250,7 +270,7 @@ Resources:
 
     PrivateNGWRoute3:
         Type: AWS::EC2::Route
-        Condition: ShouldDeployToAllAZs
+        Condition: ShouldDeployPStoAllAZs
         Properties:
             RouteTableId: !Ref PrivateRouteTable3
             DestinationCidrBlock: 0.0.0.0/0
@@ -258,12 +278,14 @@ Resources:
 
     PrivateSubnetRouteTableAssociation1:
         Type: AWS::EC2::SubnetRouteTableAssociation
+        Condition: ShouldDeployPrivateSubnets
         Properties:
             SubnetId: !Ref PrivateSubnet1
             RouteTableId: !Ref PrivateRouteTable1
 
     PrivateSubnetRouteTableAssociation2:
         Type: AWS::EC2::SubnetRouteTableAssociation
+        Condition: ShouldDeployPrivateSubnets
         Properties:
             SubnetId: !Ref PrivateSubnet2
             RouteTableId: !Ref PrivateRouteTable2
@@ -271,21 +293,23 @@ Resources:
 
     PrivateSubnetRouteTableAssociation3:
         Type: AWS::EC2::SubnetRouteTableAssociation
-        Condition: ShouldDeployToAllAZs
+        Condition: ShouldDeployPStoAllAZs
         Properties:
             SubnetId: !Ref PrivateSubnet3
             RouteTableId: !Ref PrivateRouteTable3
 
 
 Outputs:
+
     VPCID:
-        Description: VPC physical id
+        Description: VPC id
         Value: !Ref VPC
         Export:
             Name: !Sub ${AWS::StackName}-vpc-id
+
     PrivateSubnets:
         Description: List of Private Subnets
-        Value: !Join [ ",", [!Ref PrivateSubnet1, !Ref PrivateSubnet2] ]
+        Value: !If [ ShouldDeployPrivateSubnets, !Join [ ",", [!Ref PrivateSubnet1, !Ref PrivateSubnet2] ], ""]
         Export:
             Name: !Sub ${AWS::StackName}-private-subnets
 
