@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/aws/aws-sdk-go-v2/aws/endpoints"
 	"github.com/aws/aws-sdk-go-v2/aws/external"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/s3/s3manager"
@@ -9,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"os"
 	"log"
+	"github.com/aws/aws-sdk-go-v2/aws/endpoints"
 )
 
 var cfg aws.Config
@@ -59,6 +59,7 @@ func loadConfig() {
 		panic("unable to load SDK config, " + err.Error())
 	}
 	cfg = defaultcfg
+	cfg.Region = endpoints.UsWest2RegionID
 }
 
 func wait(cfn *cloudformation.CloudFormation, stackname string, isUpdate bool) {
@@ -73,7 +74,7 @@ func wait(cfn *cloudformation.CloudFormation, stackname string, isUpdate bool) {
 		})
 	}
 	if err != nil {
-		panic("stack update failed!")
+		panic("stack update failed!" + err.Error())
 	}
 }
 
@@ -123,11 +124,10 @@ func launchStack(cfg aws.Config, template CFTemplate) {
 func main() {
 	loadConfig()
 
-	// Set the AWS Region that the service clients should use
-	cfg.Region = endpoints.UsWest2RegionID
 	cftemplates := []CFTemplate{
 		{Filename: "templates/network.yaml", StackName: "granta-network"},
-		{Filename: "templates/resources.yaml", StackName: "granta-resources"},
+		//{Filename: "templates/resources.yaml", StackName: "granta-resources"},
+		{Filename: "templates/cluster.yaml", StackName: "granta-cluster"},
 	}
 
 	templateHandles := collectTemplates(cftemplates)

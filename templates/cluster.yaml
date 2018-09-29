@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+    Deploys an ECS Cluster + an Application Load Balancer
+
+Parameters:
+    NetworkStackName:
+        Type: String
+        Description: Name of the network stack
+        Default: granta-network
+
+    GrantAzureComHostedZoneId:
+        Type: String
+        Description: Hosted Zone ID of grantazure.com
+        Default: ZPWT7V1HN6HH9
+
+Resources:
+
+    LoadBalancerSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            VpcId:
+                Fn::ImportValue: !Sub ${NetworkStackName}-vpc-id
+            GroupDescription: Inbound HTTP/S
+            SecurityGroupIngress:
+                - FromPort: 80
+                  ToPort: 80
+                  IpProtocol: tcp
+                  CidrIp: "0.0.0.0/0"
+                - FromPort: 443
+                  ToPort: 443
+                  IpProtocol: tcp
+                  CidrIp: "0.0.0.0/0"
+
+    ALB:
+        Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+        Properties:
+            Type: application
+            SecurityGroups:
+                - !Ref LoadBalancerSecurityGroup
+            Subnets:
+                Fn::Split:
+                    - ","
+                    - Fn::ImportValue: !Sub "${NetworkStackName}-public-subnets"
+
+    DefaultTargetGroup:
+        Type: AWS::ElasticLoadBalancingV2::TargetGroup
+        Properties:
+            VpcId:
+                Fn::ImportValue: !Sub ${NetworkStackName}-vpc-id
+            Port: 80
+            Protocol: HTTP
+
+
+    HTTPListener:
+        Type: AWS::ElasticLoadBalancingV2::Listener
+        Properties:
+            LoadBalancerArn: !Ref ALB
+            Port: 80
+            Protocol: HTTP
+            DefaultActions:
+                - TargetGroupArn: !Ref DefaultTargetGroup
+                  Type: forward
+
+    DNSRecord:
+        Type: AWS::Route53::RecordSet
+        Properties:
+            HostedZoneId: !Ref GrantAzureComHostedZoneId
+            Comment: DNS For my ALB
+            Name: "api.grantazure.com"
+            Type: CNAME
+            TTL: 900
+            ResourceRecords:
+                - !GetAtt ALB.DNSName
+
+    ECSCluster:
+        Type: AWS::ECS::Cluster
