@@ -23,7 +23,9 @@ Parameters:
 Conditions:
     ShouldDeployToAllAZs: !Equals [ !Ref FullAZDeploy, "true" ]
     ShouldDeployPrivateSubnets: !Equals [ !Ref DeployPrivateSubnets, "true" ]
-    ShouldDeployPStoAllAZs: !And [ ShouldDeployToAllAZs, ShouldDeployPrivateSubnets ]
+    ShouldDeployPStoAllAZs: !And
+        - Condition: ShouldDeployToAllAZs
+        - Condition: ShouldDeployPrivateSubnets
 
 Mappings:
 
@@ -309,7 +311,7 @@ Outputs:
 
     PrivateSubnets:
         Description: List of Private Subnets
-        Value: !If [ ShouldDeployPrivateSubnets, !Join [ ",", [!Ref PrivateSubnet1, !Ref PrivateSubnet2] ], ""]
+        Value: !If [ ShouldDeployPrivateSubnets, !Join [ ",", [!Ref PrivateSubnet1, !Ref PrivateSubnet2] ], "N/A"]
         Export:
             Name: !Sub ${AWS::StackName}-private-subnets
 

@@ -22,6 +22,10 @@ type CFTemplate struct {
 	StackName string
 }
 
+func (t CFTemplate) url() string {
+	return bucketURL + t.Filename
+}
+
 func collectTemplates(templates []CFTemplate) []*os.File {
 	var fhs []*os.File
 	for _, template := range templates {
@@ -34,9 +38,9 @@ func collectTemplates(templates []CFTemplate) []*os.File {
 	return fhs
 }
 
-func uploadTemplates(cfg aws.Config, fhs []*os.File) []string {
+func uploadTemplates(cfg aws.Config, templates []CFTemplate) {
+	fhs := collectTemplates(templates)
 	svc := s3manager.NewUploader(cfg)
-	filenames := make([]string, 0)
 	for _, fh := range fhs {
 		defer fh.Close()
 		output, err := svc.Upload(&s3manager.UploadInput{
@@ -48,9 +52,7 @@ func uploadTemplates(cfg aws.Config, fhs []*os.File) []string {
 			panic("Failed to upload file!" + err.Error())
 		}
 		log.Println(output.Location)
-		filenames = append(filenames, fh.Name())
 	}
-	return filenames
 }
 
 func loadConfig() {
@@ -84,13 +86,12 @@ func launchStack(cfg aws.Config, template CFTemplate) {
 	_, err := svc.DescribeStacksRequest(&cloudformation.DescribeStacksInput{
 		StackName: aws.String(template.StackName),
 	}).Send()
-	templateURL := bucketURL + template.Filename
 
 	if err == nil {
 		// Build the request with its input parameters
 		req := svc.UpdateStackRequest(&cloudformation.UpdateStackInput{
 			StackName:   aws.String(template.StackName),
-			TemplateURL: aws.String(templateURL),
+			TemplateURL: aws.String(template.url()),
 		})
 
 		// Send the request, and get the response or error back
@@ -106,7 +107,7 @@ func launchStack(cfg aws.Config, template CFTemplate) {
 		req := svc.CreateStackRequest(&cloudformation.CreateStackInput{
 			StackName:       aws.String(template.StackName),
 			DisableRollback: aws.Bool(true),
-			TemplateURL:     aws.String(templateURL),
+			TemplateURL:     aws.String(template.url()),
 		})
 
 		// Send the request, and get the response or error back
@@ -121,19 +122,48 @@ func launchStack(cfg aws.Config, template CFTemplate) {
 
 }
 
+func validate(template CFTemplate) error {
+	cfn := cloudformation.New(cfg)
+	req := cfn.ValidateTemplateRequest(&cloudformation.ValidateTemplateInput{
+		TemplateURL: aws.String(template.url()),
+	})
+	_, err := req.Send()
+	return err
+}
+
+func validateTemplates(templates []CFTemplate) {
+	errs := make([]error, len(templates))
+	hasError := false
+	for i, tmpl := range templates {
+		errs[i] = validate(tmpl)
+		if errs[i] != nil {
+			fmt.Println(tmpl.Filename + ": " + errs[i].Error())
+			hasError = true
+		}
+	}
+	if hasError {
+		fmt.Println("Template validation error")
+	} else {
+		fmt.Println("No validation errors")
+	}
+}
+
+func launchStacks(templates []CFTemplate) {
+	for _, template := range templates {
+		launchStack(cfg, template)
+	}
+}
+
 func main() {
 	loadConfig()
 
 	cftemplates := []CFTemplate{
 		{Filename: "templates/network.yaml", StackName: "granta-network"},
 		//{Filename: "templates/resources.yaml", StackName: "granta-resources"},
-		{Filename: "templates/cluster.yaml", StackName: "granta-cluster"},
+		//{Filename: "templates/cluster.yaml", StackName: "granta-cluster"},
 	}
 
-	templateHandles := collectTemplates(cftemplates)
-	uploadTemplates(cfg, templateHandles)
-
-	for _, template := range cftemplates {
-		launchStack(cfg, template)
-	}
+	uploadTemplates(cfg, cftemplates)
+	validateTemplates(cftemplates)
+	launchStacks(cftemplates)
 }
