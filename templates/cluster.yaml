@@ -50,7 +50,6 @@ Resources:
             Port: 80
             Protocol: HTTP
 
-
     HTTPListener:
         Type: AWS::ElasticLoadBalancingV2::Listener
         Properties:
@@ -74,3 +73,90 @@ Resources:
 
     ECSCluster:
         Type: AWS::ECS::Cluster
+
+    ECSExecutionRole:
+        Type: AWS::IAM::Role
+        Properties:
+            Path: "/"
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    - Effect: Allow
+                      Principal:
+                        Service: "ecs-tasks.amazonaws.com"
+                      Action:
+                        - sts:AssumeRole
+
+    ECSExecutionRolePolicy:
+        Type: AWS::IAM::Policy
+        Properties:
+            Roles:
+                - !Ref ECSExecutionRole
+            PolicyName: !Sub ${AWS::StackName}-ecs-execution-role-policies
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    - Effect: Allow
+                      Resource: "*"
+                      Action:
+                        - ecr:GetAuthorizationToken
+                        - ecr:BatchCheckLayerAvailability
+                        - ecr:GetDownloadUrlForLayer
+                        - ecr:BatchGetImage
+                        - logs:CreateLogStream
+                        - logs:PutLogEvents
+
+    ECSServiceSchedulerRole:
+        Type: AWS::IAM::Role
+        Properties:
+            Path: "/"
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    - Effect: Allow
+                      Principal:
+                        Service: "ecs.amazonaws.com"
+                      Action:
+                        - sts:AssumeRole
+
+    ECSServiceSchedulerRolePolicy:
+        Type: AWS::IAM::Policy
+        Properties:
+            Roles:
+                - !Ref ECSServiceSchedulerRole
+            PolicyName: !Sub ${AWS::StackName}-ecs-service-scheduler-role-policies
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    - Effect: Allow
+                      Resource: "*"
+                      Action:
+                        - ec2:AuthorizeSecurityGroupIngress
+                        - ec2:Describe*
+                        - elasticloadbalancing:DeregisterInstancesFromLoadBalancer
+                        - elasticloadbalancing:DeregisterTargets
+                        - elasticloadbalancing:Describe*
+                        - elasticloadbalancing:RegisterInstancesWithLoadBalancer
+                        - elasticloadbalancing:RegisterTargets
+
+Outputs:
+    HTTPListerArn:
+        Value: !Ref HTTPListener
+        Export:
+            Name: !Sub ${AWS::StackName}-http-listener-arn
+
+    ECSExecutionRoleArn:
+        Value: !GetAtt ECSExecutionRole.Arn
+        Export:
+            Name: !Sub ${AWS::StackName}-ecs-execution-role-arn
+
+    ECSServiceSchedulerRoleArn:
+        Value: !GetAtt ECSExecutionRole.Arn
+        Export:
+            Name: !Sub ${AWS::StackName}-ecs-service-scheduler-role-arn
+
+    ECSClusterName:
+        Value: !Ref ECSCluster
+        Export:
+            Name: !Sub ${AWS::StackName}-ecs-cluster-name
+

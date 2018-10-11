@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+    Deploys the oauth service
+
+Parameters:
+
+    NetworkStackName:
+        Type: String
+        Description: Name of the network stack
+        Default: granta-network
+
+    ResourcesStackName:
+        Type: String
+        Description: Name of the network stack
+        Default: granta-resources
+
+    ClusterStackName:
+        Type: String
+        Description: Name of the network stack
+        Default: granta-cluster
+
+    PublicOrPrivateSubnets:
+        Type: String
+        Description: deploy to public or private subnets
+        AllowedValues:
+            - public
+            - private
+        Default: public
+Resources:
+
+    SecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            VpcId:
+                Fn::ImportValue: !Sub ${NetworkStackName}-vpc-id
+            GroupDescription: Inbound HTTP/S
+            SecurityGroupIngress:
+                - FromPort: 80
+                  ToPort: 80
+                  IpProtocol: tcp
+                  CidrIp: "10.0.0.0/16"
+                - FromPort: 443
+                  ToPort: 443
+                  IpProtocol: tcp
+                  CidrIp: "10.0.0.0/16"
+
+    TaskDefinition:
+        Type: AWS::ECS::TaskDefinition
+        Properties:
+            Cpu: 256
+            Memory: 512
+            ExecutionRoleArn:
+                Fn::ImportValue: !Sub ${ClusterStackName}-ecs-execution-role-arn
+            Family: oauth-service
+            NetworkMode: awsvpc
+            RequiresCompatibilities:
+                - FARGATE
+            ContainerDefinitions:
+                - Name: oauth-api
+                  Cpu: 256
+                  Memory: 512
+                  Image: 558024668219.dkr.ecr.us-west-2.amazonaws.com/granta/oauth:v0
+                  Environment:
+                    - Name: GIN_MODE
+                      Value: release
+                    - Name: MYSQL_CSTRING
+                      Value: !Join
+                        - ""
+                        - - "root:tottenham8490@tcp("
+                          - Fn::ImportValue: !Sub "${ResourcesStackName}-db-cluster-address"
+                          - ":3306)/oauth?charset=utf8&parseTime=True&loc=Local"
+                    - Name: PORT
+                      Value: 80
+                  PortMappings:
+                    - ContainerPort: 80
+                  LogConfiguration:
+                    LogDriver: awslogs
+                    Options:
+                        awslogs-group: !Ref LogGroup
+                        awslogs-region: !Ref AWS::Region
+                        awslogs-stream-prefix: oauth
+
+    LogGroup:
+        Type: AWS::Logs::LogGroup
+        Properties:
+            LogGroupName: !Sub ${AWS::StackName}-oauth-api
+            RetentionInDays: 7
+
+    TargetGroup:
+        Type: AWS::ElasticLoadBalancingV2::TargetGroup
+        Properties:
+            VpcId:
+                Fn::ImportValue: !Sub ${NetworkStackName}-vpc-id
+            HealthCheckIntervalSeconds: 300
+            HealthCheckPath: "/"
+            HealthCheckPort: 80
+            HealthCheckProtocol: HTTP
+            HealthCheckTimeoutSeconds: 30
+            Matcher:
+                HttpCode: 200-399
+            Port: 80
+            Protocol: HTTP
+            TargetType: ip
+
+    ListenerRule:
+        Type: AWS::ElasticLoadBalancingV2::ListenerRule
+        Properties:
+            ListenerArn:
+                Fn::ImportValue: !Sub ${ClusterStackName}-http-listener-arn
+            Priority: 1
+            Conditions:
+                - Field: path-pattern
+                  Values: ["/*"]
+            Actions:
+                - Type: forward
+                  TargetGroupArn: !Ref TargetGroup
+
+    ECSService:
+        Type: AWS::ECS::Service
+        Properties:
+            Cluster:
+                Fn::ImportValue: !Sub ${ClusterStackName}-ecs-cluster-name
+            DesiredCount: 3
+            LaunchType: FARGATE
+            NetworkConfiguration:
+                AwsvpcConfiguration:
+                    AssignPublicIp: ENABLED
+                    SecurityGroups:
+                        - !Ref SecurityGroup
+                    Subnets:
+                        Fn::Split:
+                            - ","
+                            - Fn::ImportValue: !Sub "${NetworkStackName}-public-subnets"
+            LoadBalancers:
+                - ContainerName: oauth-api
+                  ContainerPort: 80
+                  TargetGroupArn: !Ref TargetGroup
+            TaskDefinition: !Ref TaskDefinition
+

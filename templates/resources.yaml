@@ -29,13 +29,14 @@ Resources:
             SubnetIds:
                 Fn::Split:
                     - ","
-                    - Fn::ImportValue: !Sub "${NetworkStackName}-private-subnets"
+                    - Fn::ImportValue: !Sub "${NetworkStackName}-public-subnets"
 
     DBCluster:
         Type: AWS::RDS::DBCluster
         DeletionPolicy: Delete
         Properties:
             Engine: aurora-mysql
+            DatabaseName: oauth
             MasterUsername: root
             MasterUserPassword: tottenham8490
             VpcSecurityGroupIds:
@@ -51,3 +52,9 @@ Resources:
             DBClusterIdentifier: !Ref DBCluster
             DBSubnetGroupName: !Ref SubnetGroup
             Engine: aurora-mysql
+
+Outputs:
+    AuroraEndpoint:
+        Value: !GetAtt DBCluster.Endpoint.Address
+        Export:
+            Name: !Sub ${AWS::StackName}-db-cluster-address

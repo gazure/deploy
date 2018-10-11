@@ -86,12 +86,14 @@ func launchStack(cfg aws.Config, template CFTemplate) {
 	_, err := svc.DescribeStacksRequest(&cloudformation.DescribeStacksInput{
 		StackName: aws.String(template.StackName),
 	}).Send()
+	capabilities := []cloudformation.Capability{cloudformation.CapabilityCapabilityIam}
 
 	if err == nil {
 		// Build the request with its input parameters
 		req := svc.UpdateStackRequest(&cloudformation.UpdateStackInput{
-			StackName:   aws.String(template.StackName),
-			TemplateURL: aws.String(template.url()),
+			StackName:    aws.String(template.StackName),
+			TemplateURL:  aws.String(template.url()),
+			Capabilities: capabilities,
 		})
 
 		// Send the request, and get the response or error back
@@ -108,6 +110,7 @@ func launchStack(cfg aws.Config, template CFTemplate) {
 			StackName:       aws.String(template.StackName),
 			DisableRollback: aws.Bool(true),
 			TemplateURL:     aws.String(template.url()),
+			Capabilities:    capabilities,
 		})
 
 		// Send the request, and get the response or error back
@@ -142,7 +145,7 @@ func validateTemplates(templates []CFTemplate) {
 		}
 	}
 	if hasError {
-		fmt.Println("Template validation error")
+		panic("Template validation error")
 	} else {
 		fmt.Println("No validation errors")
 	}
@@ -159,8 +162,9 @@ func main() {
 
 	cftemplates := []CFTemplate{
 		{Filename: "templates/network.yaml", StackName: "granta-network"},
-		//{Filename: "templates/resources.yaml", StackName: "granta-resources"},
-		//{Filename: "templates/cluster.yaml", StackName: "granta-cluster"},
+		{Filename: "templates/resources.yaml", StackName: "granta-resources"},
+		{Filename: "templates/cluster.yaml", StackName: "granta-cluster"},
+		{Filename: "templates/service.yaml", StackName: "granta-oauth-service"},
 	}
 
 	uploadTemplates(cfg, cftemplates)

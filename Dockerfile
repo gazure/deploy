@@ -6,7 +6,7 @@ RUN go get -d -v golang.org/x/net/html \
 COPY Gopkg.lock .
 COPY Gopkg.toml .
 RUN dep ensure --vendor-only
-COPY . .
+COPY deploy.go .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o deploy .
 
 FROM alpine:latest
