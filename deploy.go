@@ -1,17 +1,20 @@
-package main
+ package main
 
 import (
-	"github.com/aws/aws-sdk-go-v2/aws/external"
+	"context"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
-	"github.com/aws/aws-sdk-go-v2/service/s3/s3manager"
+	cfnTypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"os"
 	"log"
-	"github.com/aws/aws-sdk-go-v2/aws/endpoints"
 )
 
 var cfg aws.Config
+var ctx context.Context
 
 const bucketName = "granta-cf-templates"
 
@@ -40,10 +43,18 @@ func collectTemplates(templates []CFTemplate) []*os.File {
 
 func uploadTemplates(cfg aws.Config, templates []CFTemplate) {
 	fhs := collectTemplates(templates)
-	svc := s3manager.NewUploader(cfg)
+	svc := manager.NewUploader(s3.NewFromConfig(cfg))
+	defer func() {
+		fhs := fhs
+		for _, fh := range fhs {
+			err := fh.Close()
+			if err != nil {
+				log.Println("Error closing file handle")
+			}
+		}
+	}()
 	for _, fh := range fhs {
-		defer fh.Close()
-		output, err := svc.Upload(&s3manager.UploadInput{
+		output, err := svc.Upload(ctx, &s3.PutObjectInput{
 			Bucket: aws.String(bucketName),
 			Key:    aws.String(fh.Name()),
 			Body:   fh,
@@ -56,23 +67,24 @@ func uploadTemplates(cfg aws.Config, templates []CFTemplate) {
 }
 
 func loadConfig() {
-	defaultcfg, err := external.LoadDefaultAWSConfig()
+	defaultcfg, err := config.LoadDefaultConfig(ctx, config.WithDefaultRegion("us-west-2"))
 	if err != nil {
 		panic("unable to load SDK config, " + err.Error())
 	}
 	cfg = defaultcfg
-	cfg.Region = endpoints.UsWest2RegionID
+	cfg.Region = "us-west-2"
 }
 
-func wait(cfn *cloudformation.CloudFormation, stackname string, isUpdate bool) {
+func wait(cfn *cloudformation.Client, stackName string, isUpdate bool) {
 	var err error
 	if isUpdate {
+		waiter := cloudformation.TypeRegistrationCompleteWaiter{}()
 		err = cfn.WaitUntilStackUpdateComplete(&cloudformation.DescribeStacksInput{
-			StackName: aws.String(stackname),
+			StackName: aws.String(stackName),
 		})
 	} else {
 		err = cfn.WaitUntilStackCreateComplete(&cloudformation.DescribeStacksInput{
-			StackName: aws.String(stackname),
+			StackName: aws.String(stackName),
 		})
 	}
 	if err != nil {
@@ -81,23 +93,20 @@ func wait(cfn *cloudformation.CloudFormation, stackname string, isUpdate bool) {
 }
 
 func launchStack(cfg aws.Config, template CFTemplate) {
-	svc := cloudformation.New(cfg)
+	svc := cloudformation.NewFromConfig(cfg)
 
-	_, err := svc.DescribeStacksRequest(&cloudformation.DescribeStacksInput{
+	_, err := svc.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
 		StackName: aws.String(template.StackName),
-	}).Send()
-	capabilities := []cloudformation.Capability{cloudformation.CapabilityCapabilityIam}
+	})
+	capabilities := []cfnTypes.Capability{cfnTypes.CapabilityCapabilityIam}
 
 	if err == nil {
 		// Build the request with its input parameters
-		req := svc.UpdateStackRequest(&cloudformation.UpdateStackInput{
+		resp, err := svc.UpdateStack(ctx, &cloudformation.UpdateStackInput{
 			StackName:    aws.String(template.StackName),
 			TemplateURL:  aws.String(template.url()),
 			Capabilities: capabilities,
 		})
-
-		// Send the request, and get the response or error back
-		resp, err := req.Send()
 		if err != nil {
 			fmt.Println("failed to update stack, " + err.Error())
 		} else {
@@ -106,15 +115,13 @@ func launchStack(cfg aws.Config, template CFTemplate) {
 		}
 	} else {
 		// Build the request with its input parameters
-		req := svc.CreateStackRequest(&cloudformation.CreateStackInput{
+		resp, err := svc.CreateStack(ctx, &cloudformation.CreateStackInput{
 			StackName:       aws.String(template.StackName),
 			DisableRollback: aws.Bool(true),
 			TemplateURL:     aws.String(template.url()),
 			Capabilities:    capabilities,
 		})
 
-		// Send the request, and get the response or error back
-		resp, err := req.Send()
 		if err != nil {
 			fmt.Println("failed to update stack, " + err.Error())
 		} else {
@@ -126,11 +133,10 @@ func launchStack(cfg aws.Config, template CFTemplate) {
 }
 
 func validate(template CFTemplate) error {
-	cfn := cloudformation.New(cfg)
-	req := cfn.ValidateTemplateRequest(&cloudformation.ValidateTemplateInput{
+	cfn := cloudformation.NewFromConfig(cfg)
+	_, err := cfn.ValidateTemplate(ctx, &cloudformation.ValidateTemplateInput{
 		TemplateURL: aws.String(template.url()),
 	})
-	_, err := req.Send()
 	return err
 }
 
@@ -158,6 +164,7 @@ func launchStacks(templates []CFTemplate) {
 }
 
 func main() {
+	ctx = context.TODO()
 	loadConfig()
 
 	cftemplates := []CFTemplate{
